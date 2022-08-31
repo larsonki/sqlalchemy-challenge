@@ -40,19 +40,42 @@ app = Flask(__name__)
 def homepage():
     """List all available api routes."""
     return (
+        f"Welcome to Honolulu, Hawaii Climate API!<br/>"
+        f"<br/>"
+        f"<br/>"
         f"Available Routes:<br/>"
+        f"<br/>"
         f"/api/v1.0/precipitation<br/>"
+        f">>> Returns Precipitation in inches from 2016-08-23 \
+            through 2017-08-23<br/>"
+        f"-------------------<br/>"
+        f"<br/>"
         f"/api/v1.0/stations<br/>"
+        f">>> Returns a list of all the stations on the island.<br/>"
+        f"-------------------<br/>"
+        f"<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end>"
+        f">>> Returns the observed temperatures from the most active \
+            station (USC00519281) <br/>from 2016-08-23 through 2017-08-23 <br/>"
+        f"-------------------<br/>"
+        f"<br/>"
+        f"/api/v1.0/<start_date><br/>"
+        f">>> Search by start and end dates (yyyy-mm-dd/yyyy-mm-dd) to determine \
+            the minimum, <br/>average, and maximum temperatures for the \
+            range. If end date not entered, range will go <br/>from start through \
+            most recent date.<br/>"
+        f"-------------------<br/>"
     )
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
-    prcp = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date >= year_ago).all()
+# Convert the query results to a dictionary using date as the key and prcp as 
+# the value.
+    prcp = session.query(Measurement.date, Measurement.prcp).\
+        filter(Measurement.date >= year_ago).all()
     session.close()
     prcp_results = dict(prcp)
+# Return the JSON representation of your dictionary.
     return jsonify(prcp_results)
 
 @app.route("/api/v1.0/stations")
@@ -60,62 +83,52 @@ def stations():
     station_results = session.query(Station.station).all()
     session.close()
     station = list(np.ravel(station_results))
+# Return a JSON list of stations from the dataset.
     return jsonify(station=station)
 
 @app.route("/api/v1.0/tobs")
 def tobs():
-    most_active = session.query(Measurement.station, func.count(Measurement.id)).group_by(Measurement.station).order_by(func.count(Measurement.id).desc()).all()
+# Query the dates and temperature observations of the most active station 
+# for the previous year of data.
+    most_active = session.query(Measurement.station,\
+        func.count(Measurement.id)).group_by(Measurement.station).\
+            order_by(func.count(Measurement.id).desc()).all()
     top_station = most_active[0][0]
-    temp = session.query(Measurement.date, Measurement.tobs).filter(Measurement.station == top_station).filter(Measurement.date >= year_ago).all()
+    temp = session.query(Measurement.date, Measurement.tobs).\
+        filter(Measurement.station == top_station).\
+            filter(Measurement.date >= year_ago).all()
     session.close()
     temp_obs = list(np.ravel(temp))
+# Return a JSON list of temperature observations (TOBS) for the previous year.
     return jsonify(temp_obs=temp_obs)
 
-@app.route("/api/v1.0/<start>")
-@app.route("/api/v1.0/<start>/<end>")
-def stats(start_date, end_date=None):
-    sel = [func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs)]
-    if not
-    low = session.query(func.min(Measurement.tobs)).all()
-# @app.route("/api/v1.0/precipitation")
-# def names():
-#     # Create our session (link) from Python to the DB
-#     session = Session(engine)
+# Return a JSON list of the minimum temperature, the average temperature, 
+# and the maximum temperature for a given start or start-end range.
+## Code adapted from Maria Carter (mcarter-00) @
+## https://github.com/mcarter-00/Surfs-Up/blob/master/app.py
+@app.route("/api/v1.0/<start_date>")
+@app.route("/api/v1.0/<start_date>/<end_date>")
+def stats(start_date=None, end_date=None):
+    sel = [func.min(Measurement.tobs), func.avg(Measurement.tobs),\
+        func.max(Measurement.tobs)]
 
-#     """Return a list of all passenger names"""
-#     # Query all passengers
-#     results = session.query(Passenger.name).all()
-
-#     session.close()
-
-#     # Convert list of tuples into normal list
-#     all_names = list(np.ravel(results))
-
-#     return jsonify(all_names)
-
-
-# @app.route("/api/v1.0/passengers")
-# def passengers():
-#     # Create our session (link) from Python to the DB
-#     session = Session(engine)
-
-#     """Return a list of passenger data including the name, age, and sex of each passenger"""
-#     # Query all passengers
-#     results = session.query(Passenger.name, Passenger.age, Passenger.sex).all()
-
-#     session.close()
-
-#     # Create a dictionary from the row data and append to a list of all_passengers
-#     all_passengers = []
-#     for name, age, sex in results:
-#         passenger_dict = {}
-#         passenger_dict["name"] = name
-#         passenger_dict["age"] = age
-#         passenger_dict["sex"] = sex
-#         all_passengers.append(passenger_dict)
-
-#     return jsonify(all_passengers)
-
+# When given the start only, calculate TMIN, TAVG, and TMAX for all dates 
+# greater than or equal to the start date.
+    if not end_date:
+        date_results = session.query(*sel).\
+            filter(Measurement.date >= start_date).all()
+        session.close()
+        temp_stats = list(np.ravel(date_results))
+        return jsonify(temp_stats)
+    
+# When given the start and the end date, calculate the TMIN, TAVG, and
+# TMAX for dates from the start date through the end date (inclusive).
+    date_results = session.query(*sel).\
+        filter(Measurement.date >= start_date).\
+            filter(Measurement.date <= end_date).all()
+    session.close()
+    temp_stats = list(np.ravel(date_results))
+    return jsonify(temp_stats)
 
 if __name__ == '__main__':
      app.run(debug=True)
